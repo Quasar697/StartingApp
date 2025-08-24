@@ -5,6 +5,7 @@ import android.bluetooth.BluetoothDevice
 import android.content.Context
 import android.content.pm.PackageManager
 import androidx.core.app.ActivityCompat
+import android.util.Log
 
 data class BluetoothDeviceInfo(
     val device: BluetoothDevice,
@@ -19,17 +20,46 @@ data class BluetoothDeviceInfo(
         get() = device.address ?: "Indirizzo sconosciuto"
 
     /**
-     * Ottiene il nome del dispositivo gestendo i permessi
+     * Ottiene il nome del dispositivo gestendo i permessi con debug avanzato
      */
     private fun getDeviceNameSafely(): String {
         return try {
-            if (context != null && hasBluetoothConnectPermission(context)) {
-                device.name ?: "Dispositivo sconosciuto"
-            } else {
-                "Dispositivo sconosciuto"
+            Log.d("BluetoothDebug", "Tentativo di ottenere il nome per dispositivo: ${device.address}")
+
+            if (context == null) {
+                Log.w("BluetoothDebug", "Context è null - impossibile verificare permessi")
+                return "Dispositivo sconosciuto (no context)"
+            }
+
+            // Verifica permessi
+            val hasBluetoothConnect = hasBluetoothConnectPermission(context)
+            Log.d("BluetoothDebug", "Permesso BLUETOOTH_CONNECT: $hasBluetoothConnect")
+
+            if (!hasBluetoothConnect) {
+                Log.w("BluetoothDebug", "Permesso BLUETOOTH_CONNECT mancante")
+                return "Dispositivo sconosciuto (no permission)"
+            }
+
+            // Tenta di ottenere il nome
+            val deviceName = device.name
+            Log.d("BluetoothDebug", "Nome ottenuto dal dispositivo: '$deviceName'")
+
+            return when {
+                deviceName.isNullOrBlank() -> {
+                    Log.i("BluetoothDebug", "Nome dispositivo è null/vuoto - probabilmente non trasmette il nome")
+                    "Dispositivo sconosciuto (no name)"
+                }
+                else -> {
+                    Log.i("BluetoothDebug", "Nome dispositivo trovato: $deviceName")
+                    deviceName
+                }
             }
         } catch (e: SecurityException) {
-            "Dispositivo sconosciuto"
+            Log.e("BluetoothDebug", "SecurityException nell'ottenere il nome: ${e.message}")
+            "Dispositivo sconosciuto (security error)"
+        } catch (e: Exception) {
+            Log.e("BluetoothDebug", "Errore generico nell'ottenere il nome: ${e.message}")
+            "Dispositivo sconosciuto (error)"
         }
     }
 
@@ -60,12 +90,15 @@ data class BluetoothDeviceInfo(
     }
 
     /**
-     * Restituisce il tipo di dispositivo basato sulla classe
+     * Restituisce il tipo di dispositivo basato sulla classe con debug
      */
     fun getDeviceType(): String {
         return try {
             if (context != null && hasBluetoothConnectPermission(context)) {
-                when (device.bluetoothClass?.majorDeviceClass) {
+                val bluetoothClass = device.bluetoothClass
+                Log.d("BluetoothDebug", "BluetoothClass: ${bluetoothClass?.majorDeviceClass}")
+
+                when (bluetoothClass?.majorDeviceClass) {
                     0x0100 -> "Computer"
                     0x0200 -> "Telefono"
                     0x0400 -> "Audio"
@@ -74,28 +107,64 @@ data class BluetoothDeviceInfo(
                     0x0700 -> "Indossabile"
                     0x0800 -> "Giocattolo"
                     0x0900 -> "Salute"
-                    else -> "Sconosciuto"
+                    else -> "Sconosciuto (${bluetoothClass?.majorDeviceClass})"
                 }
             } else {
-                "Sconosciuto"
+                "Sconosciuto (no permission)"
             }
         } catch (e: SecurityException) {
-            "Sconosciuto"
+            Log.e("BluetoothDebug", "SecurityException nel getDeviceType: ${e.message}")
+            "Sconosciuto (security error)"
         }
     }
 
     /**
-     * Verifica se abbiamo il permesso BLUETOOTH_CONNECT
+     * Verifica se abbiamo il permesso BLUETOOTH_CONNECT con logging (pubblico per adapter)
      */
-    private fun hasBluetoothConnectPermission(context: Context): Boolean {
+    fun hasBluetoothConnectPermission(context: Context): Boolean {
         return if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
-            ActivityCompat.checkSelfPermission(
+            val hasPermission = ActivityCompat.checkSelfPermission(
                 context,
                 Manifest.permission.BLUETOOTH_CONNECT
             ) == PackageManager.PERMISSION_GRANTED
+
+            Log.d("BluetoothDebug", "Android 12+: BLUETOOTH_CONNECT permission = $hasPermission")
+            hasPermission
         } else {
+            Log.d("BluetoothDebug", "Android < 12: permessi legacy OK")
             true // Per versioni precedenti ad Android 12, i permessi nel manifest sono sufficienti
         }
+    }
+
+    /**
+     * Funzione di debug per ottenere tutte le informazioni disponibili
+     */
+    fun getDebugInfo(): String {
+        val sb = StringBuilder()
+        sb.append("=== DEBUG INFO ===\n")
+        sb.append("Address: $deviceAddress\n")
+        sb.append("RSSI: $rssi dBm\n")
+        sb.append("Android Version: ${android.os.Build.VERSION.SDK_INT}\n")
+        sb.append("Context available: ${context != null}\n")
+
+        if (context != null) {
+            sb.append("BLUETOOTH_CONNECT permission: ${hasBluetoothConnectPermission(context)}\n")
+        }
+
+        try {
+            if (context != null && hasBluetoothConnectPermission(context)) {
+                sb.append("Raw device name: '${device.name}'\n")
+                sb.append("Device type: ${device.type}\n")
+                sb.append("Bond state: ${device.bondState}\n")
+                sb.append("Bluetooth class: ${device.bluetoothClass}\n")
+            } else {
+                sb.append("Cannot access device details - no permission\n")
+            }
+        } catch (e: SecurityException) {
+            sb.append("SecurityException: ${e.message}\n")
+        }
+
+        return sb.toString()
     }
 
     override fun equals(other: Any?): Boolean {

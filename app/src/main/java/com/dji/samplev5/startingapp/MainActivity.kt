@@ -11,6 +11,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.os.Bundle
+import android.util.Log
 import android.view.View
 import android.widget.Button
 import android.widget.ProgressBar
@@ -21,7 +22,7 @@ import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 
-class MainActivity : Activity() {
+class MainActivity : Activity(), BluetoothConnectionManager.ConnectionListener {
 
     companion object {
         private const val REQUEST_ENABLE_BT = 1
@@ -38,6 +39,10 @@ class MainActivity : Activity() {
     private lateinit var rvDevices: RecyclerView
     private lateinit var deviceAdapter: BluetoothDeviceAdapter
 
+    // Variabili per la connessione
+    private lateinit var connectionManager: BluetoothConnectionManager
+    private var connectedDevice: BluetoothDeviceInfo? = null
+
     private var isScanning = false
 
     // BroadcastReceiver per monitorare i cambiamenti di stato del Bluetooth
@@ -50,6 +55,11 @@ class MainActivity : Activity() {
                         BluetoothAdapter.STATE_OFF -> {
                             updateUI()
                             stopScan()
+                            // Disconnetti se Bluetooth viene disattivato
+                            if (connectedDevice != null) {
+                                connectionManager.disconnect()
+                                connectedDevice = null
+                            }
                             Toast.makeText(this@MainActivity, "Bluetooth disattivato", Toast.LENGTH_SHORT).show()
                         }
                         BluetoothAdapter.STATE_ON -> {
@@ -105,6 +115,10 @@ class MainActivity : Activity() {
 
         initializeViews()
         initializeBluetooth()
+
+        // Inizializza il connection manager
+        connectionManager = BluetoothConnectionManager(this, bluetoothAdapter, this)
+
         setupRecyclerView()
         setupClickListeners()
         checkPermissions()
@@ -159,11 +173,148 @@ class MainActivity : Activity() {
     }
 
     private fun onDeviceClick(deviceInfo: BluetoothDeviceInfo) {
-        Toast.makeText(this,
-            "Selezionato: ${deviceInfo.deviceName}\nIndirizzo: ${deviceInfo.deviceAddress}",
-            Toast.LENGTH_LONG).show()
+        if (connectedDevice?.deviceAddress == deviceInfo.deviceAddress) {
+            // Se è già connesso, disconnetti
+            showDisconnectDialog(deviceInfo)
+        } else {
+            // Altrimenti, mostra dialog di connessione
+            showConnectionDialog(deviceInfo)
+        }
+    }
 
-        // Qui in futuro aggiungeremo la logica di connessione
+    private fun showConnectionDialog(deviceInfo: BluetoothDeviceInfo) {
+        val deviceName = if (deviceInfo.deviceName.contains("sconosciuto")) {
+            "Dispositivo ${deviceInfo.deviceAddress.takeLast(5)}"
+        } else {
+            deviceInfo.deviceName
+        }
+
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Connetti a dispositivo")
+            .setMessage("Vuoi connetterti a:\n$deviceName\n${deviceInfo.deviceAddress}?")
+            .setPositiveButton("Connetti") { _, _ ->
+                connectToDevice(deviceInfo)
+            }
+            .setNegativeButton("Annulla", null)
+            .setNeutralButton("Info") { _, _ ->
+                showDeviceInfo(deviceInfo)
+            }
+            .show()
+    }
+
+    private fun showDisconnectDialog(deviceInfo: BluetoothDeviceInfo) {
+        val deviceName = if (deviceInfo.deviceName.contains("sconosciuto")) {
+            "Dispositivo ${deviceInfo.deviceAddress.takeLast(5)}"
+        } else {
+            deviceInfo.deviceName
+        }
+
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Dispositivo Connesso")
+            .setMessage("Connesso a:\n$deviceName\n\nCosa vuoi fare?")
+            .setPositiveButton("Disconnetti") { _, _ ->
+                disconnectFromDevice()
+            }
+            .setNegativeButton("Annulla", null)
+            .setNeutralButton("Invia dati") { _, _ ->
+                showSendDataDialog()
+            }
+            .show()
+    }
+
+    private fun showDeviceInfo(deviceInfo: BluetoothDeviceInfo) {
+        val info = deviceInfo.getDebugInfo()
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Informazioni Dispositivo")
+            .setMessage(info)
+            .setPositiveButton("OK", null)
+            .show()
+    }
+
+    private fun showSendDataDialog() {
+        if (connectedDevice == null) {
+            Toast.makeText(this, "Nessun dispositivo connesso", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val input = android.widget.EditText(this)
+        input.hint = "Inserisci testo da inviare..."
+        input.setText("Hello from Android!")
+
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Invia dati")
+            .setMessage("Invia dati a: ${connectedDevice!!.deviceName}")
+            .setView(input)
+            .setPositiveButton("Invia") { _, _ ->
+                val text = input.text.toString().trim()
+                if (text.isNotEmpty()) {
+                    sendDataToDevice(text)
+                } else {
+                    Toast.makeText(this, "Inserisci del testo", Toast.LENGTH_SHORT).show()
+                }
+            }
+            .setNegativeButton("Annulla", null)
+            .show()
+    }
+
+    private fun sendDataToDevice(data: String) {
+        if (connectionManager.sendData(data)) {
+            Toast.makeText(this, "Dati inviati: $data", Toast.LENGTH_SHORT).show()
+            Log.d("MainActivity", "Dati inviati con successo: $data")
+        } else {
+            Toast.makeText(this, "Errore nell'invio dati", Toast.LENGTH_SHORT).show()
+            Log.e("MainActivity", "Errore nell'invio dati: $data")
+        }
+    }
+
+    private fun connectToDevice(deviceInfo: BluetoothDeviceInfo) {
+        Log.d("MainActivity", "Tentativo connessione a: ${deviceInfo.deviceAddress}")
+        connectionManager.connectToDevice(deviceInfo)
+
+        // Ferma la scansione durante la connessione
+        stopScan()
+    }
+
+    private fun disconnectFromDevice() {
+        Log.d("MainActivity", "Disconnessione...")
+        connectionManager.disconnect()
+    }
+
+    private fun updateDeviceConnectionStatus() {
+        // Aggiorna lo stato di connessione nell'adapter
+        deviceAdapter.updateConnectionStatus(connectedDevice?.deviceAddress)
+        deviceAdapter.notifyDataSetChanged()
+    }
+
+    private fun loadPairedDevices() {
+        if (!bluetoothAdapter.isEnabled) {
+            return
+        }
+
+        if (!hasBluetoothPermission()) {
+            Toast.makeText(this, "Permessi Bluetooth necessari", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        try {
+            val pairedDevices = bluetoothAdapter.bondedDevices
+            Log.d("BluetoothDebug", "Dispositivi accoppiati trovati: ${pairedDevices.size}")
+
+            pairedDevices?.forEach { device ->
+                val deviceInfo = BluetoothDeviceInfo(device, rssi = -50, context = this)
+                Log.d("BluetoothDebug", "Dispositivo accoppiato: ${device.address} - Nome: '${device.name}'")
+                deviceAdapter.addDevice(deviceInfo)
+            }
+
+            if (pairedDevices?.isNotEmpty() == true) {
+                updateDeviceListVisibility()
+                Toast.makeText(this, "Caricati ${pairedDevices.size} dispositivi accoppiati", Toast.LENGTH_SHORT).show()
+            }
+
+        } catch (e: SecurityException) {
+            Log.e("BluetoothDebug", "SecurityException nel caricare dispositivi accoppiati: ${e.message}")
+            Toast.makeText(this, "Errore permessi per dispositivi accoppiati", Toast.LENGTH_SHORT).show()
+        }
     }
 
     private fun checkPermissions() {
@@ -275,6 +426,10 @@ class MainActivity : Activity() {
             deviceAdapter.clearDevices()
             hideNoDevicesMessage()
 
+            // Carica prima i dispositivi accoppiati
+            loadPairedDevices()
+
+            // Poi avvia la scansione per nuovi dispositivi
             if (bluetoothAdapter.startDiscovery()) {
                 Toast.makeText(this, "Scansione avviata...", Toast.LENGTH_SHORT).show()
             } else {
@@ -349,8 +504,21 @@ class MainActivity : Activity() {
             } else {
                 btnBluetooth.text = "Disattiva Bluetooth"
             }
-            tvStatus.text = "Bluetooth attivo"
-            tvStatus.setTextColor(ContextCompat.getColor(this, android.R.color.holo_green_dark))
+
+            // Mostra stato connessione
+            if (connectedDevice != null) {
+                val deviceName = if (connectedDevice!!.deviceName.contains("sconosciuto")) {
+                    "Dispositivo ${connectedDevice!!.deviceAddress.takeLast(5)}"
+                } else {
+                    connectedDevice!!.deviceName
+                }
+                tvStatus.text = "Bluetooth attivo - Connesso a: $deviceName"
+                tvStatus.setTextColor(ContextCompat.getColor(this, android.R.color.holo_blue_dark))
+            } else {
+                tvStatus.text = "Bluetooth attivo"
+                tvStatus.setTextColor(ContextCompat.getColor(this, android.R.color.holo_green_dark))
+            }
+
             btnScan.isEnabled = true
         } else {
             btnBluetooth.text = "Attiva Bluetooth"
@@ -359,6 +527,12 @@ class MainActivity : Activity() {
             btnScan.isEnabled = false
             stopScan()
             hideDeviceList()
+
+            // Disconnetti se Bluetooth viene disattivato
+            if (connectedDevice != null) {
+                connectionManager.disconnect()
+                connectedDevice = null
+            }
         }
     }
 
@@ -413,6 +587,67 @@ class MainActivity : Activity() {
         }
     }
 
+    // IMPLEMENTAZIONE DELL'INTERFACCIA ConnectionListener
+
+    override fun onConnectionStarted(device: BluetoothDevice) {
+        runOnUiThread {
+            Toast.makeText(this, "Connessione in corso...", Toast.LENGTH_SHORT).show()
+            Log.d("MainActivity", "Connessione avviata con: ${device.address}")
+        }
+    }
+
+    override fun onConnectionSuccess(device: BluetoothDevice) {
+        runOnUiThread {
+            val deviceInfo = deviceAdapter.getAllDevices().find { it.deviceAddress == device.address }
+            connectedDevice = deviceInfo
+
+            val deviceName = try {
+                if (hasBluetoothPermission()) device.name ?: "Dispositivo sconosciuto"
+                else "Dispositivo sconosciuto"
+            } catch (e: SecurityException) {
+                "Dispositivo sconosciuto"
+            }
+
+            Toast.makeText(this, "Connesso a: $deviceName", Toast.LENGTH_LONG).show()
+            Log.d("MainActivity", "Connessione riuscita con: ${device.address}")
+
+            updateDeviceConnectionStatus()
+            updateUI()
+        }
+    }
+
+    override fun onConnectionFailed(device: BluetoothDevice, error: String) {
+        runOnUiThread {
+            Toast.makeText(this, "Connessione fallita: $error", Toast.LENGTH_LONG).show()
+            Log.e("MainActivity", "Connessione fallita con ${device.address}: $error")
+
+            connectedDevice = null
+            updateDeviceConnectionStatus()
+        }
+    }
+
+    override fun onDisconnected(device: BluetoothDevice) {
+        runOnUiThread {
+            Toast.makeText(this, "Dispositivo disconnesso", Toast.LENGTH_SHORT).show()
+            Log.d("MainActivity", "Disconnesso da: ${device.address}")
+
+            connectedDevice = null
+            updateDeviceConnectionStatus()
+            updateUI()
+        }
+    }
+
+    override fun onDataReceived(device: BluetoothDevice, data: String) {
+        runOnUiThread {
+            Log.d("MainActivity", "Dati ricevuti da ${device.address}: $data")
+
+            // Mostra i dati ricevuti in un toast
+            Toast.makeText(this, "Ricevuto: $data", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    // OVERRIDE METODI ACTIVITY
+
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         when (requestCode) {
@@ -459,6 +694,7 @@ class MainActivity : Activity() {
     override fun onDestroy() {
         super.onDestroy()
         stopScan()
+        connectionManager.disconnect()
         try {
             unregisterReceiver(bluetoothStateReceiver)
             unregisterReceiver(deviceDiscoveryReceiver)

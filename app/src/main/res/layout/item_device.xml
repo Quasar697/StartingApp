@@ -40,9 +40,20 @@
             android:textColor="#666666"
             android:layout_marginTop="2dp" />
 
+        <!-- NUOVO: Informazioni aggiuntive -->
+        <TextView
+            android:id="@+id/tv_device_status"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Nuovo dispositivo"
+            android:textSize="10sp"
+            android:textColor="#4CAF50"
+            android:layout_marginTop="2dp"
+            android:visibility="gone" />
+
     </LinearLayout>
 
-    <!-- Indicatore intensità segnale -->
+    <!-- Colonna destra con segnale e tipo -->
     <LinearLayout
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
@@ -63,6 +74,16 @@
             android:layout_height="4dp"
             android:layout_marginTop="2dp"
             android:background="#4CAF50" />
+
+        <!-- NUOVO: Indicatore tipo dispositivo -->
+        <TextView
+            android:id="@+id/tv_device_type"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="?"
+            android:textSize="10sp"
+            android:textColor="#999999"
+            android:layout_marginTop="2dp" />
 
     </LinearLayout>
 
