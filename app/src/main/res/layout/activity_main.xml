@@ -7,9 +7,11 @@
 
     <ScrollView
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
         android:fillViewport="true"
-        android:padding="12dp">
+        android:padding="12dp"
+        android:paddingBottom="16dp">
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -46,13 +48,14 @@
 
             </LinearLayout>
 
-            <!-- Resto del layout... -->
+            <!-- Divider -->
             <View
                 android:layout_width="match_parent"
                 android:layout_height="1dp"
                 android:background="#CCCCCC"
                 android:layout_marginBottom="12dp" />
 
+            <!-- Sezione scansione -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -79,6 +82,7 @@
 
             </LinearLayout>
 
+            <!-- Titolo dispositivi -->
             <TextView
                 android:id="@+id/tv_devices_title"
                 android:layout_width="wrap_content"
@@ -89,14 +93,17 @@
                 android:layout_marginBottom="8dp"
                 android:visibility="gone" />
 
+            <!-- Lista dispositivi -->
             <androidx.recyclerview.widget.RecyclerView
                 android:id="@+id/rv_devices"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:nestedScrollingEnabled="false"
                 android:minHeight="150dp"
-                android:visibility="gone" />
+                android:visibility="gone"
+                android:layout_marginBottom="16dp" />
 
+            <!-- Messaggio nessun dispositivo -->
             <TextView
                 android:id="@+id/tv_no_devices"
                 android:layout_width="match_parent"
@@ -106,7 +113,8 @@
                 android:textSize="12sp"
                 android:textColor="#666666"
                 android:gravity="center"
-                android:visibility="gone" />
+                android:visibility="gone"
+                android:layout_marginBottom="32dp" />
 
         </LinearLayout>
 

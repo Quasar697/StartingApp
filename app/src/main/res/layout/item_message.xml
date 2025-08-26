@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="4dp">
+
+    <!-- Messaggio inviato (destra) -->
+    <LinearLayout
+        android:id="@+id/layout_sent"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="end"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="@android:drawable/dialog_holo_light_frame"
+            android:backgroundTint="#4CAF50"
+            android:padding="12dp"
+            android:layout_marginStart="60dp"
+            android:layout_marginEnd="8dp"
+            android:elevation="2dp">
+
+            <TextView
+                android:id="@+id/tv_sent_message"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Messaggio inviato"
+                android:textColor="@android:color/white"
+                android:textSize="16sp" />
+
+            <TextView
+                android:id="@+id/tv_sent_time"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="14:30"
+                android:textColor="@android:color/white"
+                android:textSize="11sp"
+                android:layout_marginTop="4dp"
+                android:alpha="0.8" />
+
+        </LinearLayout>
+
+    </LinearLayout>
+
+    <!-- Messaggio ricevuto (sinistra) -->
+    <LinearLayout
+        android:id="@+id/layout_received"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="start"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="@android:drawable/dialog_holo_light_frame"
+            android:backgroundTint="@android:color/white"
+            android:padding="12dp"
+            android:layout_marginStart="8dp"
+            android:layout_marginEnd="60dp"
+            android:elevation="2dp">
+
+            <TextView
+                android:id="@+id/tv_received_message"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Messaggio ricevuto"
+                android:textColor="#333333"
+                android:textSize="16sp" />
+
+            <TextView
+                android:id="@+id/tv_received_time"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="14:29"
+                android:textColor="#666666"
+                android:textSize="11sp"
+                android:layout_marginTop="4dp" />
+
+        </LinearLayout>
+
+    </LinearLayout>
+
+    <!-- Messaggio di sistema (centro) -->
+    <LinearLayout
+        android:id="@+id/layout_system"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/tv_system_message"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Sistema: Connessione stabilita"
+            android:textColor="#888888"
+            android:textSize="12sp"
+            android:background="@android:drawable/dialog_holo_light_frame"
+            android:backgroundTint="#EEEEEE"
+            android:padding="8dp"
+            android:layout_margin="4dp" />
+
+    </LinearLayout>
+
+</LinearLayout>

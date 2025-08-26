@@ -1,3 +1,24 @@
 <resources>
     <string name="app_name">StartingApp</string>
+
+    <!-- Chat strings -->
+    <string name="chat_title">Chat Bluetooth</string>
+    <string name="chat_connected">Connesso</string>
+    <string name="chat_disconnected">Disconnesso</string>
+    <string name="chat_connecting">Connessione...</string>
+    <string name="message_hint">Scrivi un messaggio...</string>
+    <string name="send_button">Invia</string>
+    <string name="quick_messages">📋</string>
+
+    <!-- System messages -->
+    <string name="system_connected">Connessione stabilita</string>
+    <string name="system_disconnected">Dispositivo disconnesso</string>
+    <string name="system_connection_failed">Connessione fallita</string>
+    <string name="system_chat_started">Chat avviata</string>
+
+    <!-- Error messages -->
+    <string name="error_no_device_address">Errore: indirizzo dispositivo mancante</string>
+    <string name="error_message_empty">Inserisci un messaggio</string>
+    <string name="error_not_connected">Dispositivo non connesso</string>
+    <string name="error_send_failed">Errore nell\'invio del messaggio</string>
 </resources>

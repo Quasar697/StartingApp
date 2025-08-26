@@ -21,6 +21,7 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import android.os.Build
 
 class MainActivity : Activity(), BluetoothConnectionManager.ConnectionListener {
 
@@ -79,7 +80,7 @@ class MainActivity : Activity(), BluetoothConnectionManager.ConnectionListener {
         }
     }
 
-    // BroadcastReceiver per la scoperta di dispositivi
+    // BroadcastReceiver per la scoperta di dispositivi con debug migliorato
     private val deviceDiscoveryReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             when (intent?.action) {
@@ -88,6 +89,19 @@ class MainActivity : Activity(), BluetoothConnectionManager.ConnectionListener {
                     val rssi = intent.getShortExtra(BluetoothDevice.EXTRA_RSSI, Short.MIN_VALUE).toInt()
 
                     device?.let {
+                        Log.d("BluetoothScan", "Dispositivo trovato: ${it.address}, RSSI: $rssi")
+
+                        try {
+                            val deviceName = if (hasBluetoothPermission()) {
+                                it.name ?: "Nome sconosciuto"
+                            } else {
+                                "Nome sconosciuto"
+                            }
+                            Log.d("BluetoothScan", "Nome dispositivo: $deviceName")
+                        } catch (e: SecurityException) {
+                            Log.w("BluetoothScan", "Impossibile ottenere nome: ${e.message}")
+                        }
+
                         val deviceInfo = BluetoothDeviceInfo(it, rssi, this@MainActivity)
                         deviceAdapter.addDevice(deviceInfo)
                         updateDeviceListVisibility()
@@ -96,13 +110,22 @@ class MainActivity : Activity(), BluetoothConnectionManager.ConnectionListener {
                 BluetoothAdapter.ACTION_DISCOVERY_STARTED -> {
                     isScanning = true
                     updateScanUI()
+                    Log.d("BluetoothScan", "Discovery iniziata")
+                    Toast.makeText(this@MainActivity, "Cercando dispositivi nelle vicinanze...", Toast.LENGTH_SHORT).show()
                 }
                 BluetoothAdapter.ACTION_DISCOVERY_FINISHED -> {
                     isScanning = false
                     updateScanUI()
+                    Log.d("BluetoothScan", "Discovery terminata")
 
-                    if (deviceAdapter.getAllDevices().isEmpty()) {
+                    val foundDevices = deviceAdapter.getAllDevices().size
+                    Log.d("BluetoothScan", "Discovery terminata. Trovati $foundDevices dispositivi totali")
+
+                    if (foundDevices == 0) {
                         showNoDevicesMessage()
+                        showScanHelpDialog()
+                    } else {
+                        Toast.makeText(this@MainActivity, "Scansione completata: $foundDevices dispositivi", Toast.LENGTH_SHORT).show()
                     }
                 }
             }
@@ -112,6 +135,11 @@ class MainActivity : Activity(), BluetoothConnectionManager.ConnectionListener {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            window.navigationBarColor = ContextCompat.getColor(this, android.R.color.white)
+            window.statusBarColor = ContextCompat.getColor(this, android.R.color.darker_gray)
+        }
+
 
         initializeViews()
         initializeBluetooth()
@@ -170,11 +198,17 @@ class MainActivity : Activity(), BluetoothConnectionManager.ConnectionListener {
                 startScan()
             }
         }
+
+        // TEMPORANEO: Long press sul pulsante scan per diagnostica
+        btnScan.setOnLongClickListener {
+            runDiagnostics()
+            true
+        }
     }
 
     private fun onDeviceClick(deviceInfo: BluetoothDeviceInfo) {
         if (connectedDevice?.deviceAddress == deviceInfo.deviceAddress) {
-            // Se è già connesso, disconnetti
+            // Se è già connesso, mostra opzioni chat
             showDisconnectDialog(deviceInfo)
         } else {
             // Altrimenti, mostra dialog di connessione
@@ -212,14 +246,24 @@ class MainActivity : Activity(), BluetoothConnectionManager.ConnectionListener {
         android.app.AlertDialog.Builder(this)
             .setTitle("Dispositivo Connesso")
             .setMessage("Connesso a:\n$deviceName\n\nCosa vuoi fare?")
-            .setPositiveButton("Disconnetti") { _, _ ->
+            .setPositiveButton("💬 Chat") { _, _ ->
+                openChatActivity(deviceInfo)
+            }
+            .setNegativeButton("🔌 Disconnetti") { _, _ ->
                 disconnectFromDevice()
             }
-            .setNegativeButton("Annulla", null)
-            .setNeutralButton("Invia dati") { _, _ ->
-                showSendDataDialog()
+            .setNeutralButton("📊 Info") { _, _ ->
+                showDeviceInfo(deviceInfo)
             }
             .show()
+    }
+
+    private fun openChatActivity(deviceInfo: BluetoothDeviceInfo) {
+        val intent = Intent(this, ChatActivity::class.java).apply {
+            putExtra(ChatActivity.EXTRA_DEVICE_ADDRESS, deviceInfo.deviceAddress)
+            putExtra(ChatActivity.EXTRA_DEVICE_NAME, deviceInfo.deviceName)
+        }
+        startActivity(intent)
     }
 
     private fun showDeviceInfo(deviceInfo: BluetoothDeviceInfo) {
@@ -417,6 +461,12 @@ class MainActivity : Activity(), BluetoothConnectionManager.ConnectionListener {
             return
         }
 
+        // Verifica se i servizi di localizzazione sono attivi
+        if (!isLocationEnabled()) {
+            showLocationRequiredDialog()
+            return
+        }
+
         if (!hasBluetoothScanPermission()) {
             requestBluetoothPermissions()
             return
@@ -426,19 +476,99 @@ class MainActivity : Activity(), BluetoothConnectionManager.ConnectionListener {
             deviceAdapter.clearDevices()
             hideNoDevicesMessage()
 
+            // Log per debug
+            Log.d("BluetoothScan", "Inizio scansione dispositivi...")
+
             // Carica prima i dispositivi accoppiati
             loadPairedDevices()
 
-            // Poi avvia la scansione per nuovi dispositivi
-            if (bluetoothAdapter.startDiscovery()) {
-                Toast.makeText(this, "Scansione avviata...", Toast.LENGTH_SHORT).show()
+            // Ferma eventuali scansioni in corso
+            if (bluetoothAdapter.isDiscovering) {
+                Log.d("BluetoothScan", "Fermando scansione precedente...")
+                bluetoothAdapter.cancelDiscovery()
+
+                // Aspetta un po' prima di riavviare
+                btnScan.postDelayed({
+                    startBluetoothDiscovery()
+                }, 1000)
             } else {
-                Toast.makeText(this, "Impossibile avviare la scansione", Toast.LENGTH_SHORT).show()
+                startBluetoothDiscovery()
             }
+
         } catch (e: SecurityException) {
+            Log.e("BluetoothScan", "SecurityException: ${e.message}")
             Toast.makeText(this, "Permesso negato per la scansione", Toast.LENGTH_LONG).show()
             requestBluetoothPermissions()
         }
+    }
+
+    private fun startBluetoothDiscovery() {
+        try {
+            Log.d("BluetoothScan", "Avvio discovery Bluetooth...")
+
+            val success = bluetoothAdapter.startDiscovery()
+            if (success) {
+                Log.d("BluetoothScan", "Discovery avviata con successo")
+                Toast.makeText(this, "Scansione nuovi dispositivi avviata...", Toast.LENGTH_SHORT).show()
+            } else {
+                Log.e("BluetoothScan", "Impossibile avviare discovery")
+                Toast.makeText(this, "Impossibile avviare la scansione", Toast.LENGTH_SHORT).show()
+            }
+        } catch (e: SecurityException) {
+            Log.e("BluetoothScan", "SecurityException in startDiscovery: ${e.message}")
+            Toast.makeText(this, "Errore permessi nella scansione", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun isLocationEnabled(): Boolean {
+        val locationManager = getSystemService(Context.LOCATION_SERVICE) as android.location.LocationManager
+
+        return if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+            locationManager.isLocationEnabled
+        } else {
+            val mode = android.provider.Settings.Secure.getInt(
+                contentResolver,
+                android.provider.Settings.Secure.LOCATION_MODE,
+                android.provider.Settings.Secure.LOCATION_MODE_OFF
+            )
+            mode != android.provider.Settings.Secure.LOCATION_MODE_OFF
+        }
+    }
+
+    private fun showLocationRequiredDialog() {
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Servizi di localizzazione richiesti")
+            .setMessage("Per trovare nuovi dispositivi Bluetooth, devi attivare i servizi di localizzazione.\n\nQuesto è un requisito di Android per la privacy, anche se l'app non userà la tua posizione.")
+            .setPositiveButton("Apri Impostazioni") { _, _ ->
+                val intent = Intent(android.provider.Settings.ACTION_LOCATION_SOURCE_SETTINGS)
+                startActivity(intent)
+            }
+            .setNegativeButton("Solo dispositivi accoppiati") { _, _ ->
+                // Carica solo dispositivi già accoppiati
+                deviceAdapter.clearDevices()
+                loadPairedDevices()
+                if (deviceAdapter.getAllDevices().isEmpty()) {
+                    showNoDevicesMessage()
+                }
+            }
+            .setNeutralButton("Annulla", null)
+            .show()
+    }
+
+    private fun showScanHelpDialog() {
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Nessun dispositivo trovato")
+            .setMessage("Suggerimenti per trovare dispositivi:\n\n" +
+                    "📱 Metti altri telefoni in modalità 'rilevabile'\n" +
+                    "🎧 Attiva la modalità pairing su cuffie/speaker\n" +
+                    "📍 Assicurati che la localizzazione sia attiva\n" +
+                    "📡 Avvicinati ai dispositivi (< 10 metri)\n" +
+                    "🔄 Riprova la scansione")
+            .setPositiveButton("Riprova") { _, _ ->
+                startScan()
+            }
+            .setNegativeButton("OK", null)
+            .show()
     }
 
     private fun stopScan() {
@@ -449,6 +579,69 @@ class MainActivity : Activity(), BluetoothConnectionManager.ConnectionListener {
             } catch (e: SecurityException) {
                 // Ignora errori di permesso durante lo stop
             }
+        }
+    }
+
+    private fun runDiagnostics() {
+        val sb = StringBuilder()
+        sb.append("=== DIAGNOSTICA BLUETOOTH ===\n")
+        sb.append("Android Version: ${android.os.Build.VERSION.SDK_INT}\n")
+        sb.append("Bluetooth Adapter: ${if (::bluetoothAdapter.isInitialized) "OK" else "NON INIZIALIZZATO"}\n")
+
+        if (::bluetoothAdapter.isInitialized) {
+            sb.append("Bluetooth Enabled: ${bluetoothAdapter.isEnabled}\n")
+            sb.append("Discovery Running: ${bluetoothAdapter.isDiscovering}\n")
+        }
+
+        // Permessi
+        sb.append("\n=== PERMESSI ===\n")
+        sb.append("BLUETOOTH: ${checkPermission(Manifest.permission.BLUETOOTH)}\n")
+        sb.append("BLUETOOTH_ADMIN: ${checkPermission(Manifest.permission.BLUETOOTH_ADMIN)}\n")
+        sb.append("ACCESS_COARSE_LOCATION: ${checkPermission(Manifest.permission.ACCESS_COARSE_LOCATION)}\n")
+        sb.append("ACCESS_FINE_LOCATION: ${checkPermission(Manifest.permission.ACCESS_FINE_LOCATION)}\n")
+
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+            sb.append("BLUETOOTH_CONNECT: ${checkPermission(Manifest.permission.BLUETOOTH_CONNECT)}\n")
+            sb.append("BLUETOOTH_SCAN: ${checkPermission(Manifest.permission.BLUETOOTH_SCAN)}\n")
+        }
+
+        // Localizzazione
+        sb.append("\n=== LOCALIZZAZIONE ===\n")
+        sb.append("Location Services: ${if (isLocationEnabled()) "ATTIVI" else "DISATTIVI"}\n")
+
+        // Dispositivi accoppiati
+        sb.append("\n=== DISPOSITIVI ACCOPPIATI ===\n")
+        try {
+            if (hasBluetoothPermission()) {
+                val pairedDevices = bluetoothAdapter.bondedDevices
+                sb.append("Count: ${pairedDevices?.size ?: 0}\n")
+                pairedDevices?.forEach { device ->
+                    sb.append("- ${device.address}: ${device.name ?: "Nome sconosciuto"}\n")
+                }
+            } else {
+                sb.append("Permessi insufficienti\n")
+            }
+        } catch (e: SecurityException) {
+            sb.append("Errore permessi: ${e.message}\n")
+        }
+
+        // Mostra risultato
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Diagnostica Bluetooth")
+            .setMessage(sb.toString())
+            .setPositiveButton("OK", null)
+            .setNeutralButton("Copia log") { _, _ ->
+                Log.i("BluetoothDiagnostic", sb.toString())
+                Toast.makeText(this, "Log copiato in Logcat", Toast.LENGTH_SHORT).show()
+            }
+            .show()
+    }
+
+    private fun checkPermission(permission: String): String {
+        return if (ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED) {
+            "CONCESSO"
+        } else {
+            "NEGATO"
         }
     }
 
@@ -613,6 +806,18 @@ class MainActivity : Activity(), BluetoothConnectionManager.ConnectionListener {
 
             updateDeviceConnectionStatus()
             updateUI()
+
+            // NUOVO: Mostra dialog per aprire chat automaticamente
+            connectedDevice?.let { deviceInfo ->
+                android.app.AlertDialog.Builder(this)
+                    .setTitle("🎉 Connessione riuscita!")
+                    .setMessage("Connesso a: $deviceName\n\nVuoi aprire la chat?")
+                    .setPositiveButton("💬 Apri Chat") { _, _ ->
+                        openChatActivity(deviceInfo)
+                    }
+                    .setNegativeButton("Dopo", null)
+                    .show()
+            }
         }
     }
 
